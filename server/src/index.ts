@@ -18,9 +18,9 @@ const PUBLIC_BASE_URL = (process.env.PUBLIC_BASE_URL ?? `http://localhost:${PORT
 
 // Stable ui:// URI used in tool descriptors and resource registration.
 // ChatGPT resolves this via resources/read to get the widget HTML.
-const WIDGET_RESOURCE_URI = "ui://blunder-lens/chess-board";
+const WIDGET_RESOURCE_URI = "ui://widget/chessboard.html";
 
-// HTTP base for the widget assets (injected as <base href> into the HTML).
+// HTTP base for the widget assets (used only for external asset serving; inlined HTML doesn't need it)
 const WIDGET_HTTP_BASE = `${PUBLIC_BASE_URL}/widget/`;
 
 // Path to the built widget (populated after `npm run build -w web`)
@@ -91,16 +91,60 @@ function createMcpServer(): McpServer {
     },
     async () => {
       const indexPath = path.join(WEB_DIST, "index.html");
-      let text: string;
+      let html: string;
       try {
-        // Inject <base href> so relative asset paths resolve against the HTTP server
-        const raw = fs.readFileSync(indexPath, "utf-8");
-        text = raw.replace("<head>", `<head>\n    <base href="${WIDGET_HTTP_BASE}">`);
+        html = fs.readFileSync(indexPath, "utf-8");
+        // Inline all script assets so the HTML is fully self-contained
+        // (no external domains needed in CSP resourceDomains)
+        html = html.replace(
+          /<script\s[^>]*\bsrc="(\.[^"]+\.js)"[^>]*><\/script>/g,
+          (_match, src) => {
+            const file = path.join(WEB_DIST, src.replace(/^\.\//, ""));
+            try {
+              const code = fs.readFileSync(file, "utf-8");
+              return `<script type="module">\n${code}\n</script>`;
+            } catch {
+              return `<script>console.error("asset load failed: ${src}")</script>`;
+            }
+          }
+        );
+        // Inline CSS link tags
+        html = html.replace(
+          /<link\s[^>]*\bhref="(\.[^"]+\.css)"[^>]*>/g,
+          (_match, href) => {
+            const file = path.join(WEB_DIST, href.replace(/^\.\//, ""));
+            try {
+              const css = fs.readFileSync(file, "utf-8");
+              return `<style>${css}</style>`;
+            } catch {
+              return `<style>/* asset load failed: ${href} */</style>`;
+            }
+          }
+        );
       } catch {
-        text = "<!-- Widget not built. Run: npm run build -w web -->";
+        html = `<!doctype html><html><body><p style="color:red">Widget not built. Run: npm run build -w web</p></body></html>`;
       }
+
+      // CSP metadata: empty domains because all assets are inlined
+      const cspMeta = {
+        ui: {
+          prefersBorder: true,
+          csp: {
+            connectDomains: [],
+            resourceDomains: [],
+            frameDomains: [],
+          },
+        },
+        "openai/widgetCSP": {
+          connect_domains: [],
+          resource_domains: [],
+          frame_domains: [],
+        },
+      };
+
       return {
-        contents: [{ uri: WIDGET_RESOURCE_URI, mimeType: RESOURCE_MIME_TYPE, text }],
+        contents: [{ uri: WIDGET_RESOURCE_URI, mimeType: RESOURCE_MIME_TYPE, text: html }],
+        _meta: cspMeta,
       };
     }
   );
@@ -113,7 +157,11 @@ function createMcpServer(): McpServer {
         "Accepts an optional FEN (defaults to starting position), orientation, highlights, arrows, lastMove, and caption.",
       inputSchema: showPositionInputSchema,
       outputSchema: boardStateOutputSchema,
-      _meta: { [RESOURCE_URI_META_KEY]: WIDGET_RESOURCE_URI },
+      _meta: {
+        [RESOURCE_URI_META_KEY]: WIDGET_RESOURCE_URI,
+        ui: { resourceUri: WIDGET_RESOURCE_URI },
+        "openai/outputTemplate": WIDGET_RESOURCE_URI,
+      },
     },
     async (args) => {
       try {
@@ -121,7 +169,11 @@ function createMcpServer(): McpServer {
         return {
           content: [{ type: "text", text: JSON.stringify(boardState, null, 2) }],
           structuredContent: boardState as unknown as Record<string, unknown>,
-          _meta: { [RESOURCE_URI_META_KEY]: WIDGET_RESOURCE_URI },
+          _meta: {
+            [RESOURCE_URI_META_KEY]: WIDGET_RESOURCE_URI,
+            ui: { resourceUri: WIDGET_RESOURCE_URI },
+            "openai/outputTemplate": WIDGET_RESOURCE_URI,
+          },
         };
       } catch (err) {
         const message = err instanceof ShowPositionError ? err.message : "An unexpected error occurred.";
