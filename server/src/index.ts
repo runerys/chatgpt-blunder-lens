@@ -9,7 +9,6 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.resolve(__dirname, "../.env") });
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
-import { RESOURCE_MIME_TYPE, RESOURCE_URI_META_KEY } from "@modelcontextprotocol/ext-apps";
 import { z } from "zod";
 import type { ShowPositionInput } from "@blunder-lens/shared";
 import { showPosition, ShowPositionError } from "./tools/show-position.js";
@@ -18,7 +17,7 @@ const PORT = Number(process.env.PORT ?? 8787);
 const PUBLIC_BASE_URL = (process.env.PUBLIC_BASE_URL ?? `http://localhost:${PORT}`).replace(/\/$/, "");
 
 // Resource URI — bump this string to force ChatGPT to load fresh HTML.
-const TEMPLATE_URI = "ui://widget/chessboard-v6.html";
+const TEMPLATE_URI = "ui://widget/chessboard-v7.html";
 
 // Path to the built widget (populated after `npm run build -w web`)
 const WEB_DIST = path.resolve(__dirname, "../../web/dist");

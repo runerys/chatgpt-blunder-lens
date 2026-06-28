@@ -8,6 +8,9 @@ declare global {
   }
 }
 
+// Set localStorage.setItem('blunder-debug', '1') in browser devtools to enable.
+const SHOW_DEBUG = typeof window !== "undefined" && localStorage.getItem("blunder-debug") === "1";
+
 function parseBoardState(data: unknown): BoardState | null {
   if (data == null || typeof data !== "object") return null;
   const d = data as Record<string, unknown>;
@@ -93,15 +96,17 @@ export default function App() {
   return (
     <div>
       <ChessBoard state={board} />
-      <details style={{ padding: "0 8px", fontFamily: "monospace", fontSize: 10, color: "#aaa" }}>
-        <summary style={{ cursor: "pointer" }}>debug</summary>
-        <div>
-          source: {debug.source}<br />
-          fen: {debug.fen}<br />
-          nonce: {debug.nonce}<br />
-          has toolOutput: {String(debug.hasToolOutput)}
-        </div>
-      </details>
+      {SHOW_DEBUG && (
+        <details style={{ padding: "0 8px", fontFamily: "monospace", fontSize: 10, color: "#aaa" }}>
+          <summary style={{ cursor: "pointer" }}>debug</summary>
+          <div>
+            source: {debug.source}<br />
+            fen: {debug.fen}<br />
+            nonce: {debug.nonce}<br />
+            has toolOutput: {String(debug.hasToolOutput)}
+          </div>
+        </details>
+      )}
     </div>
   );
 }
