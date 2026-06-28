@@ -4,23 +4,14 @@ import ChessBoard from "./ChessBoard.js";
 
 declare global {
   interface Window {
-    openai?: { toolOutput?: unknown };
+    openai?: { toolOutput?: unknown; toolInput?: unknown; [key: string]: unknown };
   }
 }
 
-const STARTING_BOARD: BoardState = {
-  fen: "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
-  orientation: "white",
-  caption: "",
-  highlights: [],
-  arrows: [],
-  lastMove: null,
-};
-
-function parseBoardState(data: unknown): BoardState | string {
-  if (data == null || typeof data !== "object") return "toolOutput missing";
+function parseBoardState(data: unknown): BoardState | null {
+  if (data == null || typeof data !== "object") return null;
   const d = data as Record<string, unknown>;
-  if (typeof d.fen !== "string") return "FEN parse error: missing fen field";
+  if (typeof d.fen !== "string") return null;
   return {
     fen: d.fen,
     orientation: d.orientation === "black" ? "black" : "white",
@@ -37,45 +28,80 @@ function parseBoardState(data: unknown): BoardState | string {
   };
 }
 
-export default function App() {
-  const [boardState, setBoardState] = useState<BoardState>(STARTING_BOARD);
-  const [diag, setDiag] = useState<string | null>(null);
+function readSelected(globals: Record<string, unknown> | null): unknown {
+  return (
+    globals?.toolOutput ??
+    window.openai?.toolOutput ??
+    globals?.toolInput ??
+    window.openai?.toolInput ??
+    null
+  );
+}
 
-  function applyOutput(output: unknown) {
-    const result = parseBoardState(output);
-    if (typeof result === "string") {
-      setDiag(result);
-    } else {
-      setBoardState(result);
-      setDiag(null);
-    }
+interface DebugInfo {
+  source: string;
+  fen: string | null;
+  nonce: string;
+  hasToolOutput: boolean;
+}
+
+export default function App() {
+  const [board, setBoard] = useState<BoardState | null>(null);
+  const [debug, setDebug] = useState<DebugInfo>({
+    source: "initial",
+    fen: null,
+    nonce: "",
+    hasToolOutput: false,
+  });
+
+  function apply(globals: Record<string, unknown> | null, source: string) {
+    const data = readSelected(globals);
+    const parsed = parseBoardState(data);
+    setDebug({
+      source,
+      fen: parsed?.fen ?? null,
+      nonce: String((data as Record<string, unknown> | null)?.debugNonce ?? "").slice(0, 8),
+      hasToolOutput: !!(globals?.toolOutput ?? window.openai?.toolOutput),
+    });
+    setBoard(parsed);
   }
 
   useEffect(() => {
-    if (typeof window === "undefined") {
-      setDiag("window.openai missing");
-      return;
-    }
-    // Immediate: toolOutput already set before widget mounted
-    if (window.openai?.toolOutput !== undefined) {
-      applyOutput(window.openai.toolOutput);
-      return;
-    }
-    // Late-arriving: ChatGPT fires this event after globals are set
-    const handler = () => applyOutput(window.openai?.toolOutput);
-    window.addEventListener("openai:set_globals", handler);
+    apply(null, "initial:window.openai.toolOutput");
+
+    const handler = (event: Event) => {
+      const globals: Record<string, unknown> =
+        (event as CustomEvent)?.detail?.globals ?? {};
+      apply(globals, "openai:set_globals");
+    };
+
+    window.addEventListener("openai:set_globals", handler, { passive: true });
     return () => window.removeEventListener("openai:set_globals", handler);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  if (!board) {
+    return (
+      <div style={{ padding: 16, color: "#c0392b", fontFamily: "monospace", fontSize: 12 }}>
+        No selected chess data
+        <br />source: {debug.source}
+        <br />has toolOutput: {String(debug.hasToolOutput)}
+      </div>
+    );
+  }
+
   return (
-    <>
-      {diag && (
-        <div style={{ padding: 8, color: "#c00", fontFamily: "monospace", fontSize: 11 }}>
-          {diag}
+    <div>
+      <ChessBoard state={board} />
+      <details style={{ padding: "0 8px", fontFamily: "monospace", fontSize: 10, color: "#aaa" }}>
+        <summary style={{ cursor: "pointer" }}>debug</summary>
+        <div>
+          source: {debug.source}<br />
+          fen: {debug.fen}<br />
+          nonce: {debug.nonce}<br />
+          has toolOutput: {String(debug.hasToolOutput)}
         </div>
-      )}
-      <ChessBoard state={boardState} />
-    </>
+      </details>
+    </div>
   );
 }

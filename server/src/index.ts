@@ -18,7 +18,7 @@ const PORT = Number(process.env.PORT ?? 8787);
 const PUBLIC_BASE_URL = (process.env.PUBLIC_BASE_URL ?? `http://localhost:${PORT}`).replace(/\/$/, "");
 
 // Resource URI — bump this string to force ChatGPT to load fresh HTML.
-const TEMPLATE_URI = "ui://widget/chessboard-v4.html";
+const TEMPLATE_URI = "ui://widget/chessboard-v6.html";
 
 // Path to the built widget (populated after `npm run build -w web`)
 const WEB_DIST = path.resolve(__dirname, "../../web/dist");
@@ -83,11 +83,38 @@ function createMcpServer(): McpServer {
     TEMPLATE_URI,
     {},
     async () => {
+      const indexPath = path.join(WEB_DIST, "index.html");
       let html: string;
       try {
-        html = fs.readFileSync(path.resolve(__dirname, "../chessboard-v4.html"), "utf-8");
+        html = fs.readFileSync(indexPath, "utf-8");
+        // Inline JS assets so the HTML is self-contained
+        html = html.replace(
+          /<script\s[^>]*\bsrc="(\.[^"]+\.js)"[^>]*><\/script>/g,
+          (_match, src) => {
+            const file = path.join(WEB_DIST, src.replace(/^\.\//,  ""));
+            try {
+              const code = fs.readFileSync(file, "utf-8");
+              return `<script type="module">\n${code}\n</script>`;
+            } catch {
+              return `<script>console.error("asset load failed: ${src}")</script>`;
+            }
+          }
+        );
+        // Inline CSS assets
+        html = html.replace(
+          /<link\s[^>]*\bhref="(\.[^"]+\.css)"[^>]*>/g,
+          (_match, href) => {
+            const file = path.join(WEB_DIST, href.replace(/^\.\//,  ""));
+            try {
+              const css = fs.readFileSync(file, "utf-8");
+              return `<style>${css}</style>`;
+            } catch {
+              return `<style>/* asset load failed: ${href} */</style>`;
+            }
+          }
+        );
       } catch {
-        html = `<!doctype html><html><body><p style="color:red">chessboard-v4.html not found</p></body></html>`;
+        html = `<!doctype html><html><body><p style="color:red">Widget not built. Run: npm run build -w web</p></body></html>`;
       }
       return {
         contents: [{ uri: TEMPLATE_URI, mimeType: "text/html;profile=mcp-app", text: html }],
