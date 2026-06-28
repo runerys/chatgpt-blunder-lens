@@ -1,8 +1,5 @@
 import { useState } from "react";
-import {
-  useApp,
-  McpUiToolResultNotificationSchema,
-} from "@modelcontextprotocol/ext-apps/react";
+import { useApp } from "@modelcontextprotocol/ext-apps/react";
 import type { BoardState } from "@blunder-lens/shared";
 import ChessBoard from "./ChessBoard.js";
 
@@ -22,15 +19,12 @@ export default function App() {
     appInfo: { name: "blunder-lens", version: "0.0.1" },
     capabilities: {},
     onAppCreated: (app) => {
-      app.setNotificationHandler(
-        McpUiToolResultNotificationSchema,
-        (notification) => {
-          const structured = notification.params.structuredContent;
-          if (structured && typeof structured === "object" && "fen" in structured) {
-            setBoardState(structured as unknown as BoardState);
-          }
+      app.ontoolresult = (params) => {
+        const structured = params.structuredContent;
+        if (structured && typeof structured === "object" && "fen" in structured) {
+          setBoardState(structured as unknown as BoardState);
         }
-      );
+      };
     },
   });
 
