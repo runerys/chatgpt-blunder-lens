@@ -46,3 +46,9 @@
   text-align: center;
   line-height: 1.4;
 }
+
+@media (prefers-color-scheme: dark) {
+  .chess-caption {
+    color: #ccc;
+  }
+}

@@ -17,7 +17,7 @@ const PORT = Number(process.env.PORT ?? 8787);
 const PUBLIC_BASE_URL = (process.env.PUBLIC_BASE_URL ?? `http://localhost:${PORT}`).replace(/\/$/, "");
 
 // Resource URI — bump this string to force ChatGPT to load fresh HTML.
-const TEMPLATE_URI = "ui://widget/chessboard-v9.html";
+const TEMPLATE_URI = "ui://widget/chessboard-v10.html";
 
 // Path to the built widget (populated after `npm run build -w web`)
 const WEB_DIST = path.resolve(__dirname, "../../web/dist");
