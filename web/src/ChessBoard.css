@@ -1,0 +1,48 @@
+.chess-widget {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 8px;
+}
+
+.chess-board-wrap {
+  width: min(100vw, 480px);
+}
+
+.side-to-move-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-bottom: 0.5rem;
+  padding: 0.25rem 0.65rem;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  background: rgba(127, 127, 127, 0.14);
+  color: inherit;
+}
+
+.side-to-move-badge .side-dot {
+  width: 0.65rem;
+  height: 0.65rem;
+  border-radius: 50%;
+  border: 1px solid rgba(127, 127, 127, 0.6);
+  flex-shrink: 0;
+}
+
+.side-to-move-badge.white .side-dot {
+  background: #fff;
+}
+
+.side-to-move-badge.black .side-dot {
+  background: #111;
+}
+
+.chess-caption {
+  margin-top: 8px;
+  max-width: min(100vw, 480px);
+  font-size: 14px;
+  color: #333;
+  text-align: center;
+  line-height: 1.4;
+}
