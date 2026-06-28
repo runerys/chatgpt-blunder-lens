@@ -44,7 +44,6 @@ function readSelected(globals: Record<string, unknown> | null): unknown {
 interface DebugInfo {
   source: string;
   fen: string | null;
-  nonce: string;
   hasToolOutput: boolean;
 }
 
@@ -53,7 +52,6 @@ export default function App() {
   const [debug, setDebug] = useState<DebugInfo>({
     source: "initial",
     fen: null,
-    nonce: "",
     hasToolOutput: false,
   });
 
@@ -63,7 +61,6 @@ export default function App() {
     setDebug({
       source,
       fen: parsed?.fen ?? null,
-      nonce: String((data as Record<string, unknown> | null)?.debugNonce ?? "").slice(0, 8),
       hasToolOutput: !!(globals?.toolOutput ?? window.openai?.toolOutput),
     });
     setBoard(parsed);
@@ -102,7 +99,6 @@ export default function App() {
           <div>
             source: {debug.source}<br />
             fen: {debug.fen}<br />
-            nonce: {debug.nonce}<br />
             has toolOutput: {String(debug.hasToolOutput)}
           </div>
         </details>

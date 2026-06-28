@@ -3,7 +3,6 @@ import * as http from "node:http";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
-import { randomUUID } from "node:crypto";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.resolve(__dirname, "../.env") });
@@ -73,7 +72,7 @@ const showPositionInputSchema = {
     .describe("The previous move to mark distinctly on the board."),
 };
 
-// Output schema matching BoardState + debugNonce (for structuredContent)
+// Output schema matching BoardState
 const boardStateOutputSchema = {
   fen: z.string(),
   orientation: z.enum(["white", "black"]),
@@ -81,7 +80,6 @@ const boardStateOutputSchema = {
   highlights: z.array(z.string()),
   arrows: z.array(z.object({ from: z.string(), to: z.string(), label: z.string().optional() })),
   lastMove: z.object({ from: z.string(), to: z.string() }).nullable(),
-  debugNonce: z.string(),
 };
 
 function createMcpServer(): McpServer {
@@ -93,7 +91,7 @@ function createMcpServer(): McpServer {
     {
       _meta: {
         "openai/widgetDescription":
-          "Interactive chessboard showing a FEN position with side-to-move, highlighted squares, last move, arrows, labels, and caption.",
+          "Interactive chessboard that renders inline in the assistant response. Displays a FEN position with side-to-move indicator, highlighted squares, last-move marker, arrows with optional labels, and a caption.",
       },
     } as Record<string, unknown>,
     async () => {
@@ -141,12 +139,17 @@ function createMcpServer(): McpServer {
     {
       title: "Show Chess Position",
       description:
-        "Render a chess position as an interactive chessboard widget. " +
-        "Use this whenever the assistant explains chess and a visual board would help: " +
-        "FEN positions, PGN game moments, tactics, candidate moves, last move, arrows, " +
-        "highlighted squares, side-to-move, or chess analysis diagrams. " +
-        "Prefer this over ASCII diagrams or only algebraic notation when showing a position. " +
-        "This is a visualization tool, not a chess engine or legality/evaluation service.",
+        "Render an interactive chessboard inline in the response — the widget appears embedded at the point it is called, like a diagram in a textbook. " +
+        "Use this tool whenever explaining a position, analyzing a PGN, discussing candidate moves, tactics, plans, critical moments, or asking the user to compare positions. " +
+        "Prefer this over ASCII diagrams or text-only board descriptions. " +
+        "When analyzing a game, place diagrams inline between relevant explanation paragraphs — not all at the beginning or end. " +
+        "Use only a few well-chosen diagrams for critical moments unless the user asks for a move-by-move walkthrough. " +
+        "You may call it multiple times in a single response to show successive positions or compare different lines. " +
+        "Use 'caption' to annotate the diagram without repeating yourself in prose. " +
+        "Use 'arrows' to mark moves, ideas, or threats on the board. " +
+        "Use 'highlights' to draw attention to key squares. " +
+        "Use 'lastMove' to mark the move that led to this position. " +
+        "This tool visualizes positions only — it does not evaluate positions, validate move legality, or provide engine analysis.",
       inputSchema: showPositionInputSchema,
       outputSchema: boardStateOutputSchema,
       annotations: {
@@ -165,10 +168,7 @@ function createMcpServer(): McpServer {
         const boardState = showPosition(args as unknown as ShowPositionInput);
         return {
           content: [{ type: "text", text: "Rendering chess board." }],
-          structuredContent: {
-            ...boardState,
-            debugNonce: randomUUID(),
-          } as unknown as Record<string, unknown>,
+          structuredContent: boardState as unknown as Record<string, unknown>,
         };
       } catch (err) {
         const message = err instanceof ShowPositionError ? err.message : "An unexpected error occurred.";
