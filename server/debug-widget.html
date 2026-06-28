@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Chess Debug Widget</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 12px;
+      background: #1a1a1a;
+      color: #e0e0e0;
+    }
+    pre {
+      white-space: pre-wrap;
+      word-break: break-all;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 12px;
+      margin: 0;
+    }
+  </style>
+</head>
+<body>
+  <script>
+    function readData(globals) {
+      return {
+        fromEventToolOutput: globals?.toolOutput ?? null,
+        fromWindowToolOutput: window.openai?.toolOutput ?? null,
+        fromEventToolInput: globals?.toolInput ?? null,
+        fromWindowToolInput: window.openai?.toolInput ?? null
+      };
+    }
+
+    function chooseData(snapshot) {
+      return (
+        snapshot.fromEventToolOutput ??
+        snapshot.fromWindowToolOutput ??
+        snapshot.fromEventToolInput ??
+        snapshot.fromWindowToolInput ??
+        null
+      );
+    }
+
+    function renderDebug(source, globals) {
+      const snapshot = readData(globals);
+      const selected = chooseData(snapshot);
+
+      document.body.innerHTML =
+        '<pre style="white-space: pre-wrap; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;">' +
+        'Chess debug widget mounted\n\n' +
+        'source: ' + source + '\n' +
+        'has window.openai: ' + !!window.openai + '\n' +
+        'window.openai keys: ' + JSON.stringify(Object.keys(window.openai ?? {}), null, 2) + '\n\n' +
+        'fromEventToolOutput:\n' + JSON.stringify(snapshot.fromEventToolOutput, null, 2) + '\n\n' +
+        'fromWindowToolOutput:\n' + JSON.stringify(snapshot.fromWindowToolOutput, null, 2) + '\n\n' +
+        'fromEventToolInput:\n' + JSON.stringify(snapshot.fromEventToolInput, null, 2) + '\n\n' +
+        'fromWindowToolInput:\n' + JSON.stringify(snapshot.fromWindowToolInput, null, 2) + '\n\n' +
+        'selected:\n' + JSON.stringify(selected, null, 2) + '\n\n' +
+        'fen selected:\n' + (selected?.fen ?? 'NO FEN') +
+        '</pre>';
+    }
+
+    renderDebug("initial", null);
+
+    window.addEventListener(
+      "openai:set_globals",
+      function (event) {
+        renderDebug("openai:set_globals", event.detail?.globals ?? null);
+      },
+      { passive: true }
+    );
+  </script>
+</body>
+</html>

@@ -1,0 +1,265 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Blunder Lens</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 12px;
+      background: #1a1a1a;
+      color: #e0e0e0;
+      font-family: system-ui, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    #board-wrap {
+      position: relative;
+      width: 400px;
+      height: 400px;
+    }
+    #board {
+      display: grid;
+      grid-template-columns: repeat(8, 50px);
+      grid-template-rows: repeat(8, 50px);
+      width: 400px;
+      height: 400px;
+    }
+    .sq {
+      width: 50px;
+      height: 50px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 38px;
+      line-height: 1;
+      user-select: none;
+    }
+    .light { background: #f0d9b5; }
+    .dark  { background: #b58863; }
+    .hl    { background: rgba(255, 255, 0, 0.45) !important; }
+    .lm    { background: rgba(155, 199, 0, 0.41) !important; }
+    #arrows {
+      position: absolute;
+      top: 0; left: 0;
+      width: 400px; height: 400px;
+      pointer-events: none;
+    }
+    #caption {
+      margin-top: 8px;
+      max-width: 400px;
+      font-size: 13px;
+      color: #94a3b8;
+      text-align: center;
+    }
+    #error-msg {
+      padding: 16px;
+      color: #f87171;
+      font-family: ui-monospace, monospace;
+      font-size: 13px;
+      text-align: center;
+    }
+    #debug-panel {
+      margin-top: 12px;
+      width: 400px;
+      font-family: ui-monospace, monospace;
+      font-size: 11px;
+      color: #64748b;
+    }
+    #debug-panel summary { cursor: pointer; color: #475569; }
+    #debug-out { white-space: pre-wrap; word-break: break-all; margin: 4px 0 0; }
+  </style>
+</head>
+<body>
+  <div id="board-wrap">
+    <div id="board"></div>
+    <svg id="arrows" viewBox="0 0 400 400">
+      <defs>
+        <marker id="ah" markerWidth="5" markerHeight="5" refX="2.5" refY="2.5" orient="auto">
+          <path d="M0,0 L5,2.5 L0,5 Z" fill="rgba(255,170,0,0.9)" />
+        </marker>
+      </defs>
+    </svg>
+  </div>
+  <div id="caption"></div>
+  <details id="debug-panel">
+    <summary>debug</summary>
+    <pre id="debug-out">—</pre>
+  </details>
+
+  <script>
+    var FILES = ['a','b','c','d','e','f','g','h'];
+
+    var UNICODE = {
+      'K': '\u2654', 'Q': '\u2655', 'R': '\u2656', 'B': '\u2657', 'N': '\u2658', 'P': '\u2659',
+      'k': '\u265A', 'q': '\u265B', 'r': '\u265C', 'b': '\u265D', 'n': '\u265E', 'p': '\u265F'
+    };
+
+    function parseFen(fen) {
+      var placement = fen.split(' ')[0];
+      var rows = placement.split('/');
+      var board = {};
+      for (var rankIdx = 0; rankIdx < 8; rankIdx++) {
+        var rank = 8 - rankIdx;
+        var fileIdx = 0;
+        var row = rows[rankIdx] || '';
+        for (var i = 0; i < row.length; i++) {
+          var ch = row[i];
+          if (ch >= '1' && ch <= '8') {
+            fileIdx += parseInt(ch, 10);
+          } else {
+            board[FILES[fileIdx] + rank] = ch;
+            fileIdx++;
+          }
+        }
+      }
+      return board;
+    }
+
+    function squareCenter(sq, orientation) {
+      var file = FILES.indexOf(sq[0]);
+      var rank = parseInt(sq[1], 10) - 1;
+      var col = (orientation === 'black') ? 7 - file : file;
+      var row = (orientation === 'black') ? rank : 7 - rank;
+      return { x: (col + 0.5) * 50, y: (row + 0.5) * 50 };
+    }
+
+    function renderArrows(arrows, orientation) {
+      var svg = document.getElementById('arrows');
+      var toRemove = svg.querySelectorAll('[data-arrow]');
+      for (var i = 0; i < toRemove.length; i++) { svg.removeChild(toRemove[i]); }
+      if (!arrows || arrows.length === 0) return;
+
+      for (var ai = 0; ai < arrows.length; ai++) {
+        var arrow = arrows[ai];
+        var from = squareCenter(arrow.from, orientation);
+        var to = squareCenter(arrow.to, orientation);
+        var dx = to.x - from.x, dy = to.y - from.y;
+        var len = Math.sqrt(dx * dx + dy * dy);
+        if (len === 0) continue;
+        var shorten = 16;
+        var tx = to.x - (dx / len) * shorten;
+        var ty = to.y - (dy / len) * shorten;
+
+        var line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        line.setAttribute('x1', from.x);
+        line.setAttribute('y1', from.y);
+        line.setAttribute('x2', tx);
+        line.setAttribute('y2', ty);
+        line.setAttribute('stroke', 'rgba(255,170,0,0.85)');
+        line.setAttribute('stroke-width', '8');
+        line.setAttribute('stroke-linecap', 'round');
+        line.setAttribute('marker-end', 'url(#ah)');
+        line.setAttribute('data-arrow', '1');
+        svg.appendChild(line);
+      }
+    }
+
+    function renderBoard(selected, source) {
+      var boardEl = document.getElementById('board');
+      var captionEl = document.getElementById('caption');
+      var wrapEl = document.getElementById('board-wrap');
+
+      // Clear previous error
+      var oldErr = document.getElementById('error-msg');
+      if (oldErr) oldErr.parentNode.removeChild(oldErr);
+
+      if (!selected || !selected.fen) {
+        boardEl.innerHTML = '';
+        renderArrows([], 'white');
+        captionEl.textContent = '';
+        var errDiv = document.createElement('div');
+        errDiv.id = 'error-msg';
+        errDiv.textContent = 'No data received. window.openai.toolOutput is null.';
+        wrapEl.appendChild(errDiv);
+        updateDebug(selected, source);
+        return;
+      }
+
+      var orientation = selected.orientation || 'white';
+      var pieces = parseFen(selected.fen);
+      var highlights = {};
+      var hl = selected.highlights || [];
+      for (var i = 0; i < hl.length; i++) highlights[hl[i]] = true;
+
+      var lastMoveSquares = {};
+      if (selected.lastMove) {
+        lastMoveSquares[selected.lastMove.from] = true;
+        lastMoveSquares[selected.lastMove.to] = true;
+      }
+
+      var ranks = orientation === 'black' ? [1,2,3,4,5,6,7,8] : [8,7,6,5,4,3,2,1];
+      var files = orientation === 'black' ? ['h','g','f','e','d','c','b','a'] : ['a','b','c','d','e','f','g','h'];
+
+      boardEl.innerHTML = '';
+
+      for (var ri = 0; ri < ranks.length; ri++) {
+        var rank = ranks[ri];
+        for (var fi = 0; fi < files.length; fi++) {
+          var file = files[fi];
+          var sq = file + rank;
+          var fileNum = FILES.indexOf(file);
+          var isLight = (fileNum + rank) % 2 === 1;
+
+          var div = document.createElement('div');
+          div.className = 'sq ' + (isLight ? 'light' : 'dark');
+
+          if (highlights[sq]) {
+            div.classList.add('hl');
+          } else if (lastMoveSquares[sq]) {
+            div.classList.add('lm');
+          }
+
+          var piece = pieces[sq];
+          if (piece) {
+            div.textContent = UNICODE[piece] || piece;
+            var isWhitePiece = piece >= 'A' && piece <= 'Z';
+            div.style.color = isWhitePiece ? '#fff' : '#111';
+            div.style.textShadow = isWhitePiece
+              ? '0 0 3px #000, 0 0 3px #000'
+              : '0 0 2px rgba(255,255,255,0.25)';
+          }
+
+          boardEl.appendChild(div);
+        }
+      }
+
+      renderArrows(selected.arrows || [], orientation);
+      captionEl.textContent = selected.caption || '';
+      updateDebug(selected, source);
+    }
+
+    function updateDebug(selected, source) {
+      var el = document.getElementById('debug-out');
+      el.textContent = JSON.stringify({
+        source: source,
+        fen: selected ? selected.fen : null,
+        debugNonce: selected ? selected.debugNonce : null,
+        hasWindowOpenAI: !!(window.openai),
+        windowOpenAIKeys: Object.keys(window.openai || {})
+      }, null, 2);
+    }
+
+    function readSelected(globals) {
+      return (
+        (globals && globals.toolOutput != null ? globals.toolOutput : null) ||
+        (window.openai && window.openai.toolOutput != null ? window.openai.toolOutput : null) ||
+        (globals && globals.toolInput != null ? globals.toolInput : null) ||
+        (window.openai && window.openai.toolInput != null ? window.openai.toolInput : null) ||
+        null
+      );
+    }
+
+    // Initial render — read from window.openai immediately, don't wait for event
+    renderBoard(readSelected(null), 'initial:window.openai.toolOutput');
+
+    window.addEventListener('openai:set_globals', function(event) {
+      var globals = (event.detail && event.detail.globals) ? event.detail.globals : {};
+      renderBoard(readSelected(globals), 'openai:set_globals');
+    });
+  </script>
+</body>
+</html>

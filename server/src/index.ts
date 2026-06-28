@@ -3,6 +3,7 @@ import * as http from "node:http";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
+import { randomUUID } from "node:crypto";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.resolve(__dirname, "../.env") });
@@ -16,12 +17,8 @@ import { showPosition, ShowPositionError } from "./tools/show-position.js";
 const PORT = Number(process.env.PORT ?? 8787);
 const PUBLIC_BASE_URL = (process.env.PUBLIC_BASE_URL ?? `http://localhost:${PORT}`).replace(/\/$/, "");
 
-// Stable ui:// URI used in tool descriptors and resource registration.
-// ChatGPT resolves this via resources/read to get the widget HTML.
-const WIDGET_RESOURCE_URI = "ui://widget/chessboard.html";
-
-// HTTP base for the widget assets (used only for external asset serving; inlined HTML doesn't need it)
-const WIDGET_HTTP_BASE = `${PUBLIC_BASE_URL}/widget/`;
+// Resource URI — bump this string to force ChatGPT to load fresh HTML.
+const TEMPLATE_URI = "ui://widget/chessboard-v4.html";
 
 // Path to the built widget (populated after `npm run build -w web`)
 const WEB_DIST = path.resolve(__dirname, "../../web/dist");
@@ -67,7 +64,7 @@ const showPositionInputSchema = {
     .describe("Last move to highlight with a distinct color."),
 };
 
-// Output schema matching BoardState (for structuredContent)
+// Output schema matching BoardState + debugNonce (for structuredContent)
 const boardStateOutputSchema = {
   fen: z.string(),
   orientation: z.enum(["white", "black"]),
@@ -75,76 +72,25 @@ const boardStateOutputSchema = {
   highlights: z.array(z.string()),
   arrows: z.array(z.object({ from: z.string(), to: z.string(), label: z.string().optional() })),
   lastMove: z.object({ from: z.string(), to: z.string() }).nullable(),
+  debugNonce: z.string(),
 };
 
 function createMcpServer(): McpServer {
   const server = new McpServer({ name: "blunder-lens", version: "0.0.1" });
 
-  // Register widget resource with the stable ui:// URI.
-  // The host (ChatGPT) fetches this via resources/read and renders it in a sandboxed iframe.
   server.registerResource(
-    "chessboard-widget",
-    WIDGET_RESOURCE_URI,
-    {
-      mimeType: RESOURCE_MIME_TYPE,
-      description: "Chessboard widget for rendering board positions.",
-    },
+    "html",
+    TEMPLATE_URI,
+    {},
     async () => {
-      const indexPath = path.join(WEB_DIST, "index.html");
       let html: string;
       try {
-        html = fs.readFileSync(indexPath, "utf-8");
-        // Inline all script assets so the HTML is fully self-contained
-        // (no external domains needed in CSP resourceDomains)
-        html = html.replace(
-          /<script\s[^>]*\bsrc="(\.[^"]+\.js)"[^>]*><\/script>/g,
-          (_match, src) => {
-            const file = path.join(WEB_DIST, src.replace(/^\.\//, ""));
-            try {
-              const code = fs.readFileSync(file, "utf-8");
-              return `<script type="module">\n${code}\n</script>`;
-            } catch {
-              return `<script>console.error("asset load failed: ${src}")</script>`;
-            }
-          }
-        );
-        // Inline CSS link tags
-        html = html.replace(
-          /<link\s[^>]*\bhref="(\.[^"]+\.css)"[^>]*>/g,
-          (_match, href) => {
-            const file = path.join(WEB_DIST, href.replace(/^\.\//, ""));
-            try {
-              const css = fs.readFileSync(file, "utf-8");
-              return `<style>${css}</style>`;
-            } catch {
-              return `<style>/* asset load failed: ${href} */</style>`;
-            }
-          }
-        );
+        html = fs.readFileSync(path.resolve(__dirname, "../chessboard-v4.html"), "utf-8");
       } catch {
-        html = `<!doctype html><html><body><p style="color:red">Widget not built. Run: npm run build -w web</p></body></html>`;
+        html = `<!doctype html><html><body><p style="color:red">chessboard-v4.html not found</p></body></html>`;
       }
-
-      // CSP metadata: empty domains because all assets are inlined
-      const cspMeta = {
-        ui: {
-          prefersBorder: true,
-          csp: {
-            connectDomains: [],
-            resourceDomains: [],
-            frameDomains: [],
-          },
-        },
-        "openai/widgetCSP": {
-          connect_domains: [],
-          resource_domains: [],
-          frame_domains: [],
-        },
-      };
-
       return {
-        contents: [{ uri: WIDGET_RESOURCE_URI, mimeType: RESOURCE_MIME_TYPE, text: html }],
-        _meta: cspMeta,
+        contents: [{ uri: TEMPLATE_URI, mimeType: "text/html;profile=mcp-app", text: html }],
       };
     }
   );
@@ -158,22 +104,21 @@ function createMcpServer(): McpServer {
       inputSchema: showPositionInputSchema,
       outputSchema: boardStateOutputSchema,
       _meta: {
-        [RESOURCE_URI_META_KEY]: WIDGET_RESOURCE_URI,
-        ui: { resourceUri: WIDGET_RESOURCE_URI },
-        "openai/outputTemplate": WIDGET_RESOURCE_URI,
+        ui: { resourceUri: TEMPLATE_URI },
+        "openai/outputTemplate": TEMPLATE_URI,
+        "openai/toolInvocation/invoking": "Rendering chess board\u2026",
+        "openai/toolInvocation/invoked": "Chess board rendered",
       },
     },
     async (args) => {
       try {
         const boardState = showPosition(args as unknown as ShowPositionInput);
         return {
-          content: [{ type: "text", text: JSON.stringify(boardState, null, 2) }],
-          structuredContent: boardState as unknown as Record<string, unknown>,
-          _meta: {
-            [RESOURCE_URI_META_KEY]: WIDGET_RESOURCE_URI,
-            ui: { resourceUri: WIDGET_RESOURCE_URI },
-            "openai/outputTemplate": WIDGET_RESOURCE_URI,
-          },
+          content: [{ type: "text", text: "Rendering chess board." }],
+          structuredContent: {
+            ...boardState,
+            debugNonce: randomUUID(),
+          } as unknown as Record<string, unknown>,
         };
       } catch (err) {
         const message = err instanceof ShowPositionError ? err.message : "An unexpected error occurred.";
@@ -243,5 +188,4 @@ const httpServer = http.createServer(async (req, res) => {
 
 httpServer.listen(PORT, () => {
   console.log(`blunder-lens MCP server running on http://localhost:${PORT}/mcp`);
-  console.log(`Widget URL: ${WIDGET_HTTP_BASE}`);
 });
