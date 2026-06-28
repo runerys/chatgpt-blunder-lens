@@ -203,13 +203,26 @@ Go to **Settings → Secrets and variables → Actions** and add:
 
 ### CI/CD flow
 
-Every push to `main` builds the Docker image and pushes it to GHCR:
+Every push to `main` builds the Docker image and pushes it to GHCR tagged with `sha-<short>` and `latest`:
 
-```
+```bash
+# 1. Commit and push to main
+git add .
+git commit -m "your message"
+git checkout main
+git merge <branch>
 git push origin main
+
+# 2. Wait for CI to finish building and pushing the image
+#    (check progress at github.com/runerys/chatgpt-blunder-lens/actions)
+
+# 3. Deploy the new image to Azure
+./infra/deploy.sh
 ```
 
-If `AZURE_CREDENTIALS` is configured, the `deploy` job runs automatically and updates the container app. Otherwise the image is pushed to GHCR only.
+`./infra/deploy.sh` uses `sha-$(git rev-parse --short HEAD)` which matches the tag CI pushed.
+
+If `AZURE_CREDENTIALS` is configured, the `deploy` job runs automatically and step 3 is not needed.
 
 ### Manual deploy (no Entra admin required)
 
