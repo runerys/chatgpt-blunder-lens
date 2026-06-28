@@ -39,16 +39,16 @@ const MIME_TYPES: Record<string, string> = {
 // Input schema using Zod (defined once, reused per instance)
 const showPositionInputSchema = {
   fen: z.string().optional().describe(
-    'FEN string for the position, or "startpos". Includes side to move. Use this to show the board state.'
+    "Valid FEN string or 'startpos'. Defaults to the standard starting position. This is the authoritative displayed position."
   ),
   orientation: z.enum(["white", "black"]).optional().describe(
-    '"white" shows White at the bottom; "black" shows Black at the bottom. Does not determine side to move.'
+    "Board orientation. Defaults to 'white'."
   ),
   caption: z.string().optional().describe(
-    "Short explanation shown below the board. Describe the moment in the game or the key idea. Maximum 240 characters."
+    "Short caption shown below the board. Maximum 240 characters."
   ),
   highlights: z.array(z.string()).optional().describe(
-    'Squares to visually highlight, such as important pieces, targets, weaknesses, or key squares. e.g. ["e4", "d5"].'
+    "Squares to highlight. Each square must be algebraic board notation from a1 to h8."
   ),
   arrows: z
     .array(
@@ -60,7 +60,7 @@ const showPositionInputSchema = {
     )
     .optional()
     .describe(
-      "Arrows to draw on the board for candidate moves, threats, plans, or explanatory lines."
+      "Arrows to draw on the board. Each from/to square must be algebraic board notation from a1 to h8. Arrows are visual annotations only."
     ),
   lastMove: z
     .object({
@@ -69,7 +69,7 @@ const showPositionInputSchema = {
     })
     .nullable()
     .optional()
-    .describe("The previous move to mark distinctly on the board."),
+    .describe("Move to highlight as the move that led to the displayed FEN. Annotation only; it does not modify the position."),
 };
 
 // Output schema matching BoardState
@@ -139,17 +139,10 @@ function createMcpServer(): McpServer {
     {
       title: "Show Chess Position",
       description:
-        "Render an interactive chessboard inline in the response — the widget appears embedded at the point it is called, like a diagram in a textbook. " +
-        "Use this tool whenever explaining a position, analyzing a PGN, discussing candidate moves, tactics, plans, critical moments, or asking the user to compare positions. " +
-        "Prefer this over ASCII diagrams or text-only board descriptions. " +
-        "When analyzing a game, place diagrams inline between relevant explanation paragraphs — not all at the beginning or end. " +
-        "Use only a few well-chosen diagrams for critical moments unless the user asks for a move-by-move walkthrough. " +
-        "You may call it multiple times in a single response to show successive positions or compare different lines. " +
-        "Use 'caption' to annotate the diagram without repeating yourself in prose. " +
-        "Use 'arrows' to mark moves, ideas, or threats on the board. " +
-        "Use 'highlights' to draw attention to key squares. " +
-        "Use 'lastMove' to mark the move that led to this position. " +
-        "This tool visualizes positions only — it does not evaluate positions, validate move legality, or provide engine analysis.",
+        "Render exactly one chess position as an interactive chessboard widget. " +
+        "The FEN is authoritative and describes the displayed position; lastMove, highlights, and arrows are visual annotations only. " +
+        "Use this tool to help explain chess positions visually, not to manage game state or execute moves. " +
+        "If fen is omitted or 'startpos', the standard starting position is shown.",
       inputSchema: showPositionInputSchema,
       outputSchema: boardStateOutputSchema,
       annotations: {
