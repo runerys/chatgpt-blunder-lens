@@ -172,6 +172,56 @@ npm run build       # build all workspaces
 npm run dev         # watch mode for server + web (requires concurrently)
 ```
 
+## Deployment (Azure Container Apps)
+
+The server is packaged as a Docker image and deployed to Azure Container Apps via GitHub Actions.
+
+### One-time setup
+
+Run the setup script to create the Azure resources:
+
+```bash
+az login
+./infra/setup.sh
+```
+
+This creates a resource group, a Container Apps environment, and the app itself. It prints the public HTTPS URL and the GitHub Secrets you need to add.
+
+### GitHub Secrets
+
+Go to **Settings → Secrets and variables → Actions** and add:
+
+| Secret | Value |
+|---|---|
+| `GHCR_TOKEN` | GitHub PAT with `read:packages` scope |
+| `PUBLIC_BASE_URL` | `https://<fqdn>` printed by setup.sh |
+| `AZURE_CREDENTIALS` | JSON from `az ad sp create-for-rbac` (requires Entra admin) |
+| `AZURE_RESOURCE_GROUP` | `blunder-lens-rg` |
+| `AZURE_CONTAINER_APP_NAME` | `blunder-lens` |
+
+`AZURE_CREDENTIALS` is only needed for automated deploy from CI. If you cannot create a service principal, skip it and deploy manually (see below).
+
+### CI/CD flow
+
+Every push to `main` builds the Docker image and pushes it to GHCR:
+
+```
+git push origin main
+```
+
+If `AZURE_CREDENTIALS` is configured, the `deploy` job runs automatically and updates the container app. Otherwise the image is pushed to GHCR only.
+
+### Manual deploy (no Entra admin required)
+
+If you cannot create a service principal, deploy from your local machine after each push:
+
+```bash
+./infra/deploy.sh          # deploys current HEAD
+./infra/deploy.sh <sha>    # deploys a specific commit
+```
+
+Requires `az login` and `gh auth login` (or `GHCR_TOKEN` env var).
+
 ## Non-goals (v0)
 
 - Public app directory submission
@@ -182,7 +232,6 @@ npm run dev         # watch mode for server + web (requires concurrently)
 - Game-playing mode
 - Multiple boards / variation tree / move navigation
 - Drag-and-drop moves
-- Production deployment
 
 ## State model
 
