@@ -10,6 +10,9 @@ interface Props {
 const HIGHLIGHT_COLOR = "rgba(255, 215, 0, 0.5)";
 const LAST_MOVE_COLOR = "rgba(20, 150, 255, 0.4)";
 
+// Enable with: localStorage.setItem('blunder-debug', '1')
+const SHOW_DEBUG = typeof window !== "undefined" && localStorage.getItem("blunder-debug") === "1";
+
 function getSideToMove(fen?: string): "w" | "b" {
   if (!fen || fen === "startpos") return "w";
   const token = fen.trim().split(/\s+/)[1];
@@ -32,7 +35,8 @@ export default function ChessBoard({ state }: Props) {
     customSquareStyles[lastMove.to] = { backgroundColor: LAST_MOVE_COLOR };
   }
 
-  // Map arrows to react-chessboard format: [from, to, color?]
+  // Pass algebraic square names directly — react-chessboard handles coordinates internally.
+  // Format: [from, to, color?]  — type Arrow = [Square, Square, string?]
   const customArrows = arrows.map(
     (a: BoardArrow) => [a.from, a.to, "rgba(0,0,200,0.6)"] as unknown as Arrow
   );
@@ -55,6 +59,18 @@ export default function ChessBoard({ state }: Props) {
       </div>
 
       {caption && <p className="chess-caption">{caption}</p>}
+
+      {SHOW_DEBUG && arrows.length > 0 && (
+        <details style={{ padding: "0 8px", fontFamily: "monospace", fontSize: 10, color: "#999", width: "min(100vw, 480px)" }}>
+          <summary style={{ cursor: "pointer" }}>arrow debug</summary>
+          <div>
+            <div><b>raw arrows (from server):</b></div>
+            <pre style={{ margin: "2px 0 6px" }}>{JSON.stringify(arrows, null, 2)}</pre>
+            <div><b>mapped to react-chessboard [from, to, color]:</b></div>
+            <pre style={{ margin: "2px 0" }}>{JSON.stringify(customArrows, null, 2)}</pre>
+          </div>
+        </details>
+      )}
     </div>
   );
 }

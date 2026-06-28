@@ -17,7 +17,7 @@ const PORT = Number(process.env.PORT ?? 8787);
 const PUBLIC_BASE_URL = (process.env.PUBLIC_BASE_URL ?? `http://localhost:${PORT}`).replace(/\/$/, "");
 
 // Resource URI — bump this string to force ChatGPT to load fresh HTML.
-const TEMPLATE_URI = "ui://widget/chessboard-v8.html";
+const TEMPLATE_URI = "ui://widget/chessboard-v9.html";
 
 // Path to the built widget (populated after `npm run build -w web`)
 const WEB_DIST = path.resolve(__dirname, "../../web/dist");
@@ -39,20 +39,30 @@ const MIME_TYPES: Record<string, string> = {
 
 // Input schema using Zod (defined once, reused per instance)
 const showPositionInputSchema = {
-  fen: z.string().optional().describe('Valid FEN string or "startpos". Defaults to starting position.'),
-  orientation: z.enum(["white", "black"]).optional().describe('Board orientation. Defaults to "white".'),
-  caption: z.string().optional().describe("Caption shown below the board. Maximum 240 characters."),
-  highlights: z.array(z.string()).optional().describe("Squares to highlight, e.g. [\"e4\", \"d5\"]."),
+  fen: z.string().optional().describe(
+    'FEN string for the position, or "startpos". Includes side to move. Use this to show the board state.'
+  ),
+  orientation: z.enum(["white", "black"]).optional().describe(
+    '"white" shows White at the bottom; "black" shows Black at the bottom. Does not determine side to move.'
+  ),
+  caption: z.string().optional().describe(
+    "Short explanation shown below the board. Describe the moment in the game or the key idea. Maximum 240 characters."
+  ),
+  highlights: z.array(z.string()).optional().describe(
+    'Squares to visually highlight, such as important pieces, targets, weaknesses, or key squares. e.g. ["e4", "d5"].'
+  ),
   arrows: z
     .array(
       z.object({
         from: z.string().describe("Arrow origin square, e.g. \"e2\"."),
         to: z.string().describe("Arrow target square, e.g. \"e4\"."),
-        label: z.string().optional().describe("Optional label for the arrow."),
+        label: z.string().optional().describe("Optional label for the arrow, e.g. a move like \"Nf3\"."),
       })
     )
     .optional()
-    .describe("Arrows to draw on the board."),
+    .describe(
+      "Arrows to draw on the board for candidate moves, threats, plans, or explanatory lines."
+    ),
   lastMove: z
     .object({
       from: z.string().describe("Origin square of the last move."),
@@ -60,7 +70,7 @@ const showPositionInputSchema = {
     })
     .nullable()
     .optional()
-    .describe("Last move to highlight with a distinct color."),
+    .describe("The previous move to mark distinctly on the board."),
 };
 
 // Output schema matching BoardState + debugNonce (for structuredContent)
@@ -80,7 +90,12 @@ function createMcpServer(): McpServer {
   server.registerResource(
     "html",
     TEMPLATE_URI,
-    {},
+    {
+      _meta: {
+        "openai/widgetDescription":
+          "Interactive chessboard showing a FEN position with side-to-move, highlighted squares, last move, arrows, labels, and caption.",
+      },
+    } as Record<string, unknown>,
     async () => {
       const indexPath = path.join(WEB_DIST, "index.html");
       let html: string;
@@ -124,16 +139,25 @@ function createMcpServer(): McpServer {
   server.registerTool(
     "show_position",
     {
+      title: "Show Chess Position",
       description:
         "Render a chess position as an interactive chessboard widget. " +
-        "Accepts an optional FEN (defaults to starting position), orientation, highlights, arrows, lastMove, and caption.",
+        "Use this whenever the assistant explains chess and a visual board would help: " +
+        "FEN positions, PGN game moments, tactics, candidate moves, last move, arrows, " +
+        "highlighted squares, side-to-move, or chess analysis diagrams. " +
+        "Prefer this over ASCII diagrams or only algebraic notation when showing a position. " +
+        "This is a visualization tool, not a chess engine or legality/evaluation service.",
       inputSchema: showPositionInputSchema,
       outputSchema: boardStateOutputSchema,
+      annotations: {
+        readOnlyHint: true,
+        idempotentHint: true,
+      },
       _meta: {
         ui: { resourceUri: TEMPLATE_URI },
         "openai/outputTemplate": TEMPLATE_URI,
-        "openai/toolInvocation/invoking": "Rendering chess board\u2026",
-        "openai/toolInvocation/invoked": "Chess board rendered",
+        "openai/toolInvocation/invoking": "Viser sjakkbrett\u2026",
+        "openai/toolInvocation/invoked": "Sjakkbrett klart",
       },
     },
     async (args) => {
