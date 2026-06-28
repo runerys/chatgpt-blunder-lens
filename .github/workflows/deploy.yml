@@ -14,8 +14,8 @@ name: Build and deploy to Azure Container Apps
 #
 # ─── GitHub repository secrets ────────────────────────────────────────────
 #
-#   Required for ci job (GITHUB_TOKEN is automatic — nothing to add):
-#     GHCR_TOKEN  – GitHub PAT with read:packages (used by Azure to pull image)
+#   Required for ci job: nothing — GITHUB_TOKEN is automatic.
+#   GHCR package is public, so Azure pulls without credentials.
 #
 #   Required for deploy job (optional — skip if no Entra access):
 #     AZURE_CREDENTIALS        – JSON from az ad sp create-for-rbac  (secret)
@@ -40,6 +40,8 @@ jobs:
   ci:
     name: Build and push to GHCR
     runs-on: ubuntu-latest
+    outputs:
+      image-tag: ${{ steps.meta.outputs.version }}
 
     steps:
       - name: Checkout
@@ -52,14 +54,22 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=sha,format=short,prefix=sha-
+            type=raw,value=latest,enable={{is_default_branch}}
+
       - name: Build and push Docker image
         uses: docker/build-push-action@v6
         with:
           context: .
           push: true
-          tags: |
-            ghcr.io/${{ github.repository }}:latest
-            ghcr.io/${{ github.repository }}:${{ github.sha }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
 
   deploy:
     name: Deploy to Azure Container Apps
@@ -78,10 +88,8 @@ jobs:
       - name: Update container app
         run: |
           az containerapp update \
-            --name "${{ vars.AZURE_CONTAINER_APP_NAME }}" \
-            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
-            --image "ghcr.io/${{ github.repository }}:${{ github.sha }}" \
-            --set-env-vars "PUBLIC_BASE_URL=${{ vars.PUBLIC_BASE_URL }}" \
-            --registry-server ghcr.io \
-            --registry-username "${{ github.actor }}" \
-            --registry-password "${{ secrets.GHCR_TOKEN }}"
+            --name "${{ secrets.AZURE_CONTAINER_APP_NAME }}" \
+            --resource-group "${{ secrets.AZURE_RESOURCE_GROUP }}" \
+            --image "ghcr.io/${{ github.repository }}:${{ needs.ci.outputs.image-tag }}" \
+            --set-env-vars "PUBLIC_BASE_URL=${{ secrets.PUBLIC_BASE_URL }}" \
+            --output none

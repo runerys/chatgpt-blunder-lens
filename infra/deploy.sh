@@ -3,55 +3,43 @@
 #
 # Requires:
 #   - Azure CLI installed and logged in (az login)
-#   - GitHub CLI installed and logged in (gh auth login), OR set GHCR_TOKEN env var
 #
 # Usage:
-#   ./infra/deploy.sh [git-sha]
+#   ./infra/deploy.sh [tag]
 #
-# If no SHA is given, uses the current HEAD commit.
+# If no tag is given, uses sha-<short HEAD> matching the CI convention.
+# The GHCR package is public — no token needed.
 
 set -euo pipefail
 
 RG="${RG:-blunder-lens-rg}"
 APP="${APP:-blunder-lens}"
 REPO="${REPO:-runerys/chatgpt-blunder-lens}"
-SHA="${1:-$(git rev-parse HEAD)}"
-IMAGE="ghcr.io/${REPO}:${SHA}"
+# Use explicit tag if provided, otherwise sha-<short> matching CI convention.
+# Fall back to 'latest' if git is unavailable.
+TAG="${1:-sha-$(git rev-parse --short HEAD 2>/dev/null || echo latest)}"
+IMAGE="ghcr.io/${REPO}:${TAG}"
 
-# Resolve GHCR_TOKEN — prefer env var, fall back to gh CLI
-if [[ -z "${GHCR_TOKEN:-}" ]]; then
-  if command -v gh &>/dev/null; then
-    GHCR_TOKEN=$(gh auth token)
-  else
-    echo "ERROR: Set GHCR_TOKEN or install GitHub CLI (gh)." >&2
-    exit 1
-  fi
-fi
-
-GITHUB_USER=$(gh api user --jq .login 2>/dev/null || echo "${GITHUB_USER:-}")
-if [[ -z "$GITHUB_USER" ]]; then
-  echo "ERROR: Could not determine GitHub username. Set GITHUB_USER env var." >&2
-  exit 1
-fi
-
-PUBLIC_BASE_URL=$(az containerapp show \
+FQDN=$(az containerapp show \
   --name "$APP" --resource-group "$RG" \
-  --query "\"https://\"+ properties.configuration.ingress.fqdn" \
+  --query "properties.configuration.ingress.fqdn" \
   -o tsv)
+PUBLIC_BASE_URL="https://${FQDN}"
 
 echo "==> Deploying $IMAGE"
 echo "    App:  $APP  ($RG)"
 echo "    URL:  $PUBLIC_BASE_URL"
 echo ""
 
+# GHCR package is public — no registry credentials needed.
+# Do NOT call 'az containerapp registry set'; empty credentials cause ImagePullBackOff.
 az containerapp update \
   --name "$APP" \
   --resource-group "$RG" \
   --image "$IMAGE" \
+  --min-replicas 0 \
+  --max-replicas 1 \
   --set-env-vars "PUBLIC_BASE_URL=${PUBLIC_BASE_URL}" \
-  --registry-server ghcr.io \
-  --registry-username "$GITHUB_USER" \
-  --registry-password "$GHCR_TOKEN" \
   --output none
 
 echo "Done. Live at $PUBLIC_BASE_URL"
