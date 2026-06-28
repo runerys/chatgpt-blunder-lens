@@ -1,0 +1,84 @@
+name: Build and deploy to Azure Container Apps
+
+# ─── Workflow overview ─────────────────────────────────────────────────────
+#
+# Job 1 (ci): Runs on every push to main.
+#   Builds Docker image and pushes to GHCR. No Azure credentials needed.
+#
+# Job 2 (deploy): Runs only when AZURE_CREDENTIALS secret is set.
+#   Updates the Azure Container App to the new image.
+#   Skipped automatically if the secret is missing.
+#
+# If you cannot create a service principal (Entra admin required),
+# skip the deploy job and run infra/deploy.sh locally after each push.
+#
+# ─── GitHub repository secrets ────────────────────────────────────────────
+#
+#   Required for ci job (GITHUB_TOKEN is automatic — nothing to add):
+#     GHCR_TOKEN  – GitHub PAT with read:packages (used by Azure to pull image)
+#
+#   Required for deploy job (optional — skip if no Entra access):
+#     AZURE_CREDENTIALS        – JSON from az ad sp create-for-rbac
+#     AZURE_RESOURCE_GROUP     – e.g. blunder-lens-rg
+#     AZURE_CONTAINER_APP_NAME – e.g. blunder-lens
+#     PUBLIC_BASE_URL          – https://<fqdn from az containerapp show>
+#
+# ──────────────────────────────────────────────────────────────────────────
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  ci:
+    name: Build and push to GHCR
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository }}:latest
+            ghcr.io/${{ github.repository }}:${{ github.sha }}
+
+  deploy:
+    name: Deploy to Azure Container Apps
+    runs-on: ubuntu-latest
+    needs: ci
+    # Skip this job if AZURE_CREDENTIALS has not been configured.
+    if: ${{ secrets.AZURE_CREDENTIALS != '' }}
+
+    steps:
+      - name: Log in to Azure
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Update container app
+        run: |
+          az containerapp update \
+            --name "${{ secrets.AZURE_CONTAINER_APP_NAME }}" \
+            --resource-group "${{ secrets.AZURE_RESOURCE_GROUP }}" \
+            --image "ghcr.io/${{ github.repository }}:${{ github.sha }}" \
+            --set-env-vars "PUBLIC_BASE_URL=${{ secrets.PUBLIC_BASE_URL }}" \
+            --registry-server ghcr.io \
+            --registry-username "${{ github.actor }}" \
+            --registry-password "${{ secrets.GHCR_TOKEN }}"
