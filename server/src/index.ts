@@ -13,7 +13,6 @@ import type { ShowPositionInput } from "@blunder-lens/shared";
 import { showPosition, ShowPositionError } from "./tools/show-position.js";
 
 const PORT = Number(process.env.PORT ?? 8787);
-const PUBLIC_BASE_URL = (process.env.PUBLIC_BASE_URL ?? `http://localhost:${PORT}`).replace(/\/$/, "");
 
 // Resource URI — bump this string to force ChatGPT to load fresh HTML.
 const TEMPLATE_URI = "ui://widget/chessboard-v10.html";
