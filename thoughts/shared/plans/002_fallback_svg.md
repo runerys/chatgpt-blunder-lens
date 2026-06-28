@@ -250,7 +250,7 @@ export function renderBoardSvg(state: BoardState): string {
 ### Success Criteria
 
 #### Automated Verification:
-- [ ] `npm run typecheck -w server` passes with zero errors.
+- [x] `npm run typecheck -w server` passes with zero errors.
 
 #### Manual Verification:
 - [ ] The function can be called with `{ fen: "startpos FEN", orientation: "white", highlights: [], arrows: [], lastMove: null, caption: "" }` and returns a string starting with `<svg`.
@@ -316,8 +316,8 @@ return {
 ### Success Criteria
 
 #### Automated Verification:
-- [ ] `npm run typecheck` (all workspaces) passes with zero errors.
-- [ ] `npm run build -w server` compiles without errors.
+- [x] `npm run typecheck` (all workspaces) passes with zero errors.
+- [x] `npm run build -w server` compiles without errors.
 
 #### Manual Verification (smoke test):
 ```bash

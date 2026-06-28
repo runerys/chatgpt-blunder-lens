@@ -11,6 +11,7 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import { z } from "zod";
 import type { ShowPositionInput } from "@blunder-lens/shared";
 import { showPosition, ShowPositionError } from "./tools/show-position.js";
+import { renderBoardSvg } from "./tools/render-svg.js";
 
 const PORT = Number(process.env.PORT ?? 8787);
 const PUBLIC_BASE_URL = (process.env.PUBLIC_BASE_URL ?? `http://localhost:${PORT}`).replace(/\/$/, "");
@@ -70,6 +71,11 @@ const showPositionInputSchema = {
     .nullable()
     .optional()
     .describe("The previous move to mark distinctly on the board."),
+  includeSvg: z.boolean().optional().describe(
+    "Whether to include an SVG board image in the response. "
+    + "Defaults to true — omit this parameter unless you are running inside ChatGPT with the chessboard widget available, "
+    + "in which case set includeSvg: false (the widget renders the position; the image is redundant)."
+  ),
 };
 
 // Output schema matching BoardState
@@ -166,8 +172,15 @@ function createMcpServer(): McpServer {
     async (args) => {
       try {
         const boardState = showPosition(args as unknown as ShowPositionInput);
+        const contentItems: Array<{ type: "text"; text: string } | { type: "image"; data: string; mimeType: string }> = [];
+        if ((args as { includeSvg?: boolean }).includeSvg !== false) {
+          const svg = renderBoardSvg(boardState);
+          const b64 = Buffer.from(svg).toString("base64");
+          contentItems.push({ type: "image", data: b64, mimeType: "image/svg+xml" });
+        }
+        contentItems.push({ type: "text", text: "Rendering chess board." });
         return {
-          content: [{ type: "text", text: "Rendering chess board." }],
+          content: contentItems,
           structuredContent: boardState as unknown as Record<string, unknown>,
         };
       } catch (err) {
