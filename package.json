@@ -1,0 +1,14 @@
+{
+  "name": "blunder-lens",
+  "private": true,
+  "workspaces": ["shared", "server", "web"],
+  "scripts": {
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "build": "npm run build --workspaces --if-present",
+    "dev": "concurrently \"npm run dev -w server\" \"npm run dev -w web\""
+  },
+  "devDependencies": {
+    "concurrently": "^9.0.0",
+    "typescript": "^5.5.0"
+  }
+}

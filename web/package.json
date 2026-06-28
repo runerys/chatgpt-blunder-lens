@@ -1,0 +1,24 @@
+{
+  "name": "@blunder-lens/web",
+  "version": "0.0.1",
+  "private": true,
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@blunder-lens/shared": "*",
+    "react": "^18.0.0",
+    "react-dom": "^18.0.0",
+    "react-chessboard": "^4.0.0",
+    "chess.js": "^1.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^18.0.0",
+    "@types/react-dom": "^18.0.0",
+    "@vitejs/plugin-react": "^4.0.0",
+    "typescript": "*",
+    "vite": "^5.0.0"
+  }
+}
